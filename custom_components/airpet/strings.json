@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer la litière Air Pet",
+        "description": "Veuillez entrer votre jeton d'authentification et le numéro de série de votre litière.",
+        "data": {
+          "auth_token": "Jeton d'authentification (Token)",
+          "serial_number": "Numéro de série de la litière"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de se connecter à l'API Air Pet. Vérifiez vos identifiants."
+    },
+    "abort": {
+      "already_configured": "Cet appareil est déjà configuré."
+    }
+  }
+}
