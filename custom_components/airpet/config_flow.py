@@ -1,25 +1,37 @@
 import logging
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from .const import DOMAIN
+from .const import DOMAIN, API_HOST
 
 _LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
-        vol.Required("auth_token"): str,
+        vol.Required("email"): str,
+        vol.Required("password"): str,
         vol.Required("serial_number"): str,
     }
 )
 
-async def async_validate_input(hass: HomeAssistant, data: dict) -> None:
-    """Valide les identifiants saisis par l'utilisateur."""
-    # Vous pouvez ajouter ici une vérification si besoin, 
-    # ou simplement valider la présence des champs.
-    pass
+async def async_authenticate_and_get_token(hass: HomeAssistant, email: str, password: str) -> str:
+    """Se connecte à l'API Airrobo pour récupérer le jeton d'authentification."""
+    url = f"https://{API_HOST}/catbox-server/web/user/login"  # Remplacez par l'URL exacte de login capturée si besoin
+    payload = {
+        "email": email,
+        "password": password
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, timeout=10) as response:
+            if response.status != 200:
+                raise ValueError("Identifiants invalides ou erreur serveur")
+            data = await response.json()
+            # Adaptez le chemin selon la structure JSON de la réponse de connexion
+            return data.get("data", {}).get("token")
 
 class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Gère le flux de configuration de l'intégration Air Pet."""
@@ -34,12 +46,23 @@ class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                await async_validate_input(self.hass, user_input)
+                # Récupère automatiquement le token grâce à l'email et au mot de passe
+                auth_token = await async_authenticate_and_get_token(
+                    self.hass, user_input["email"], user_input["password"]
+                )
                 
-                # Crée l'entrée dans Home Assistant avec les données saisies
+                if not auth_token:
+                    raise ValueError("Token introuvable dans la réponse")
+
+                # On stocke le token et le numéro de série pour le coordinateur
+                data = {
+                    "auth_token": auth_token,
+                    "serial_number": user_input["serial_number"]
+                }
+                
                 return self.async_create_entry(
                     title=f"Litière Air Pet ({user_input['serial_number']})",
-                    data=user_input,
+                    data=data,
                 )
             except Exception:
                 errors["base"] = "cannot_connect"
