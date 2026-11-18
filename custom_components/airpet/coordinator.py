@@ -40,6 +40,12 @@ class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
                 url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status != 200:
+                    body = await response.text()
+                    _LOGGER.warning(
+                        "allConfig Air Pet : HTTP %s, réponse : %s",
+                        response.status,
+                        body[:300],
+                    )
                     raise UpdateFailed(f"Erreur HTTP: {response.status}")
                 data = await response.json(content_type=None)
         except (aiohttp.ClientError, asyncio.TimeoutError) as error:
