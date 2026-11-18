@@ -1,21 +1,37 @@
-import logging
-import aiohttp
 import asyncio
+import logging
 from datetime import timedelta
 
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+import aiohttp
+
 from homeassistant.core import HomeAssistant
-from .const import DOMAIN, API_HOST
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .const import DOMAIN, API_HOST, APP_ID
 
 _LOGGER = logging.getLogger(__name__)
+
+USER_AGENT = (
+    "CatLitterBoxYibai/2.1.8 (com.yibainetwork.airpet; build:734; iOS 27.2.1) "
+    "Alamofire/5.5.0"
+)
+
 
 class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
     """Coordinateur pour récupérer l'état de la litière Air Pet."""
 
-    def __init__(self, hass: HomeAssistant, session: aiohttp.ClientSession, auth_token: str, serial_number: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        session: aiohttp.ClientSession,
+        auth_token: str,
+        serial_number: str,
+        device_id: str,
+    ) -> None:
         self.session = session
         self.auth_token = auth_token
         self.serial_number = serial_number
+        self.device_id = device_id
         super().__init__(
             hass,
             _LOGGER,
@@ -23,21 +39,31 @@ class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=60),
         )
 
-    async def _async_update_data(self):
-        """Récupère les données depuis l'API cloud."""
-        url = f"https://{API_HOST}/catbox-server/box/config/allConfig?serialNumber={self.serial_number}"
-        
-        headers = {
+    def _headers(self) -> dict[str, str]:
+        """En-têtes communs, calqués sur ceux de l'app officielle."""
+        return {
             "Authorization": self.auth_token,
             "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "CatLitterBoxYibai/2.1.8 (com.yibainetwork.airpet; build:734; iOS 27.2.1) Alamofire/5.5.0",
-            "X-UBT-AppId": "970010086",
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": USER_AGENT,
+            "language": "fr",
+            "X-UBT-AppId": APP_ID,
+            "X-UBT-DeviceId": self.device_id,
+            "X-UBT-Language": "fr",
         }
+
+    async def _async_update_data(self):
+        """Récupère les données depuis l'API cloud."""
+        url = (
+            f"https://{API_HOST}/catbox-server/box/config/allConfig"
+            f"?serialNumber={self.serial_number}"
+        )
 
         try:
             async with self.session.get(
-                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                url,
+                headers=self._headers(),
+                timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status != 200:
                     body = await response.text()
@@ -61,29 +87,31 @@ class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
         return data
 
     async def async_send_command(self, action: str) -> bool:
-        """Envoie une commande à la litière (ex: lancer le nettoyage)."""
-        url = f"https://{API_HOST}/catbox-server/box/action/clean" 
-        
-        headers = {
-            "Authorization": self.auth_token,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "CatLitterBoxYibai/2.1.8 (com.yibainetwork.airpet; build:734; iOS 27.2.1) Alamofire/5.5.0",
-            "X-UBT-AppId": "970010086",
-        }
-        
-        payload = {
-            "serialNumber": self.serial_number,
-            "action": action
-        }
+        """Envoie une commande à la litière.
+
+        ATTENTION : l'URL et le corps ci-dessous ne sont pas encore vérifiés
+        avec une capture de l'app officielle.
+        """
+        url = f"https://{API_HOST}/catbox-server/box/action/clean"
+        payload = {"serialNumber": self.serial_number, "action": action}
 
         try:
-            async with self.session.post(url, headers=headers, json=payload, timeout=10) as response:
+            async with self.session.post(
+                url,
+                headers=self._headers(),
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
                 if response.status == 200:
                     await self.async_request_refresh()
                     return True
-                _LOGGER.error("Erreur lors de l'envoi de la commande: %s", response.status)
+                body = await response.text()
+                _LOGGER.error(
+                    "Commande Air Pet : HTTP %s, réponse : %s",
+                    response.status,
+                    body[:300],
+                )
                 return False
-        except Exception as error:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
             _LOGGER.error("Exception lors de l'envoi de la commande: %s", error)
             return False

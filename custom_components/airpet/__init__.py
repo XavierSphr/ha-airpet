@@ -19,6 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_get_clientsession(hass),
         entry.data["auth_token"],
         entry.data["serial_number"],
+        entry.data["device_id"],
     )
 
     # Première récupération : si elle échoue, HA réessaie automatiquement plus tard
