@@ -11,6 +11,8 @@ from .const import DOMAIN, API_HOST, APP_ID
 
 _LOGGER = logging.getLogger(__name__)
 
+PRODUCT_ID = "97001"  # en-tête "product" envoyé par l'app sur les routes catbox-server
+
 USER_AGENT = (
     "CatLitterBoxYibai/2.1.8 (com.yibainetwork.airpet; build:734; iOS 27.2.1) "
     "Alamofire/5.5.0"
@@ -44,9 +46,10 @@ class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
         return {
             "Authorization": self.auth_token,
             "Accept": "application/json",
+            "Accept-Language": "fr-FR;q=1.0",
             "Content-Type": "application/json; charset=utf-8",
             "User-Agent": USER_AGENT,
-            "language": "fr",
+            "product": PRODUCT_ID,
             "X-UBT-AppId": APP_ID,
             "X-UBT-DeviceId": self.device_id,
             "X-UBT-Language": "fr",
