@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Air Pet Litter Box",
+        "data": {
+          "email": "E-mail",
+          "password": "Mot de passe",
+          "serial_number": "Numéro de série"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de joindre le serveur Air Pet",
+      "invalid_auth": "E-mail ou mot de passe incorrect",
+      "unknown": "Erreur inattendue (voir les journaux)"
+    },
+    "abort": {
+      "already_configured": "Cette litière est déjà configurée"
+    }
+  }
+}
