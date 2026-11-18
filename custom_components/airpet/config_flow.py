@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import logging
+import uuid
 
 import aiohttp
 import voluptuous as vol
@@ -9,7 +11,7 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, API_HOST
+from .const import DOMAIN, API_HOST, APP_ID
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,19 +32,30 @@ class InvalidAuth(Exception):
     """Identifiants refusés."""
 
 
-async def async_authenticate_user(hass: HomeAssistant, email: str, password: str) -> str:
+async def async_authenticate_user(
+    hass: HomeAssistant, email: str, password: str, device_id: str
+) -> str:
     url = f"https://{API_HOST}/user-service-rest/v2/user/login"
-    payload = {"account": email, "password": password}
+    payload = {
+        "account": email,
+        "accountType": "1",
+        "appId": APP_ID,
+        "areaCode": "FR",
+        "password": hashlib.md5(password.encode()).hexdigest(),
+    }
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "CatLitterBoxYibai/2.1.8 (com.yibainetwork.airpet; build:734; iOS 27.2.1) Alamofire/5.5.0",
-        "X-UBT-AppId": "970010086",
+        "language": "fr",
+        "X-UBT-AppId": APP_ID,
+        "X-UBT-DeviceId": device_id,
+        "X-UBT-Language": "fr",
     }
     session = async_get_clientsession(hass)
 
     try:
-        async with session.post(
+        async with session.put(
             url,
             json=payload,
             headers=headers,
@@ -57,13 +70,15 @@ async def async_authenticate_user(hass: HomeAssistant, email: str, password: str
     except (aiohttp.ClientError, asyncio.TimeoutError) as err:
         raise CannotConnect(str(err)) from err
 
-    # On logue tout sauf "data" (qui contient le jeton) : code/message d'erreur de l'API
+    inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+    # On logue tout sauf les valeurs de "data" (qui contient le jeton)
     _LOGGER.debug(
         "Réponse login Air Pet (hors data) : %s",
         {k: v for k, v in data.items() if k != "data"},
     )
+    _LOGGER.debug("Clés présentes dans data : %s", list(inner.keys()))
 
-    token = (data.get("data") or {}).get("token") or data.get("token")
+    token = inner.get("token") or data.get("token")
     if not token:
         raise InvalidAuth("Jeton introuvable dans la réponse")
     return token
@@ -80,9 +95,10 @@ class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(serial)
             self._abort_if_unique_id_configured()
 
+            device_id = str(uuid.uuid4()).upper()
             try:
                 token = await async_authenticate_user(
-                    self.hass, user_input["email"], user_input["password"]
+                    self.hass, user_input["email"], user_input["password"], device_id
                 )
             except InvalidAuth as err:
                 _LOGGER.warning("Air Pet : authentification refusée (%s)", err)
@@ -96,7 +112,11 @@ class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_create_entry(
                     title=f"Litière Air Pet ({serial})",
-                    data={"auth_token": token, "serial_number": serial},
+                    data={
+                        "auth_token": token,
+                        "serial_number": serial,
+                        "device_id": device_id,
+                    },
                 )
 
         return self.async_show_form(
