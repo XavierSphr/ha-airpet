@@ -1,5 +1,6 @@
 import logging
 import aiohttp
+import asyncio
 from datetime import timedelta
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -35,12 +36,23 @@ class AirPetDataUpdateCoordinator(DataUpdateCoordinator):
         }
 
         try:
-            async with self.session.get(url, headers=headers, timeout=10) as response:
+            async with self.session.get(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
                 if response.status != 200:
                     raise UpdateFailed(f"Erreur HTTP: {response.status}")
-                return await response.json()
-        except Exception as error:
-            raise UpdateFailed(f"Erreur de communication avec l'API Air Pet : {error}")
+                data = await response.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            raise UpdateFailed(
+                f"Erreur de communication avec l'API Air Pet : {error}"
+            ) from error
+
+        _LOGGER.debug(
+            "allConfig Air Pet : clés=%s, hors data=%s",
+            list(data.keys()),
+            {k: v for k, v in data.items() if k != "data"},
+        )
+        return data
 
     async def async_send_command(self, action: str) -> bool:
         """Envoie une commande à la litière (ex: lancer le nettoyage)."""
