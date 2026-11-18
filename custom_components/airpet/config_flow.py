@@ -34,7 +34,8 @@ class InvalidAuth(Exception):
 
 async def async_authenticate_user(
     hass: HomeAssistant, email: str, password: str, device_id: str
-) -> str:
+) -> dict:
+    """Se connecte à l'API cloud et retourne token, refresh_token et expire_at."""
     url = f"https://{API_HOST}/user-service-rest/v2/user/login"
     payload = {
         "account": email,
@@ -78,10 +79,17 @@ async def async_authenticate_user(
     )
     _LOGGER.debug("Clés présentes dans data : %s", list(inner.keys()))
 
-    token = inner.get("token") or data.get("token")
-    if not token:
+    token_info = inner.get("token") or data.get("token")
+    if isinstance(token_info, dict):
+        token = token_info.get("token")
+        refresh_token = token_info.get("refreshToken")
+        expire_at = token_info.get("expireAt")
+    else:
+        token, refresh_token, expire_at = token_info, None, None
+
+    if not token or not isinstance(token, str):
         raise InvalidAuth("Jeton introuvable dans la réponse")
-    return token
+    return {"token": token, "refresh_token": refresh_token, "expire_at": expire_at}
 
 
 class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -97,7 +105,7 @@ class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             device_id = str(uuid.uuid4()).upper()
             try:
-                token = await async_authenticate_user(
+                auth = await async_authenticate_user(
                     self.hass, user_input["email"], user_input["password"], device_id
                 )
             except InvalidAuth as err:
@@ -113,7 +121,9 @@ class AirPetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Litière Air Pet ({serial})",
                     data={
-                        "auth_token": token,
+                        "auth_token": auth["token"],
+                        "refresh_token": auth["refresh_token"],
+                        "expire_at": auth["expire_at"],
                         "serial_number": serial,
                         "device_id": device_id,
                     },
