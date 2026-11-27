@@ -63,13 +63,19 @@ async def async_authenticate_user(
             timeout=aiohttp.ClientTimeout(total=10),
         ) as response:
             _LOGGER.debug("Login Air Pet : HTTP %s", response.status)
-            if response.status in (400, 401, 403):
-                raise InvalidAuth(f"HTTP {response.status}")
             if response.status != 200:
+                body = (await response.text())[:500]
+                _LOGGER.warning(
+                    "Login Air Pet refusé : HTTP %s, corps : %s",
+                    response.status,
+                    body,
+                )
+                if response.status in (401, 403):
+                    raise InvalidAuth(f"HTTP {response.status}")
                 raise CannotConnect(f"HTTP {response.status}")
             data = await response.json(content_type=None)
     except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-        raise CannotConnect(str(err)) from err
+        raise CannotConnect(f"{type(err).__name__}: {err}") from err
 
     inner = data.get("data") if isinstance(data.get("data"), dict) else {}
     # On logue tout sauf les valeurs de "data" (qui contient le jeton)
